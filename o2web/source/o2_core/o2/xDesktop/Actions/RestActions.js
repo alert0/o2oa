@@ -69,6 +69,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
         MWF.restful(method, uri, data, callback, async, credentials);
     },
 	invoke: function(option){
+        if (window.importScripts && window.isCompletionEnvironment) return null;
         if (!this.address) this.getAddress();
         var res = null;
         this.getActions(function(){
@@ -77,6 +78,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
             var method = action.method || "GET";
             var uri = action.uri;
             var progress = action.progress;
+
             if (option.parameter){
                 Object.each(option.parameter, function(value, key){
                     var reg = new RegExp("{"+key+"}", "g");
@@ -89,7 +91,43 @@ MWF.xDesktop.Actions.RestActions = new Class({
             }
             uri = this.address+uri;
 
+            //putToPost, deleteToGet
+            if (layout.config.mock && layout.config.mock[this.serviceName]){
+                var mock = layout.config.mock[this.serviceName][method.toLowerCase()];
+                if (mock){
+                    method = mock.to || method;
+                    var append = mock.append;
+                    uri = uri+((uri.substr(uri.length-1, 1)=="/") ? append : "/"+append);
+                }
+            }
+
             var async = (option.async===false) ? false : true;
+
+            // if (!option.success) option.success = function(v){return v;}.ag();
+            // if (option.success && !option.success.isAG) option.success = option.success.ag();
+            //
+            // if (option.failure && option.failure.failure) option.failure = option.failure.failure;
+            // if (option.failure) {
+            //     option.success.catch(option.failure);
+            //     option.failure.owner = option.success;
+            // }
+            // if (!option.failure && option.success && option.success.failure){
+            //     option.failure = option.success.failure;
+            //     option.failure.owner = option.success;
+            // }
+
+            // if (option.failure && option.failure.failure) option.failure = option.failure.failure;
+            // if (!option.failure && option.success && option.success.failure){
+            //     option.failure = option.success.failure;
+            //     option.failure.owner = option.success;
+            // }
+            // if (!option.success){
+            //     option.success = function(v){return v;}.ag();
+            //     if (option.failure) {
+            //         option.success.catch(option.failure);
+            //         option.failure.owner = option.success;
+            //     }
+            // }
 
             var callback = new MWF.xDesktop.Actions.RestActions.Callback(option.success, option.failure);
             if (action.enctype && (action.enctype.toLowerCase()=="formdata")){
@@ -118,7 +156,8 @@ MWF.xDesktop.Actions.RestActions = new Class({
             if(file){
                 this.transferComplete(e, xhr, messageItem, currentDate, file);
             }
-        }.bind(this), false);        xhr.upload.addEventListener("loadstart", function(e){this.transferStart(e, xhr, messageItem);}.bind(this), false);
+        }.bind(this), false);
+        xhr.upload.addEventListener("loadstart", function(e){this.transferStart(e, xhr, messageItem);}.bind(this), false);
         xhr.upload.addEventListener("error", function(e){this.transferFailed(e, xhr, messageItem);}.bind(this), false);
         xhr.upload.addEventListener("abort", function(e){this.transferCanceled(e, xhr, messageItem);}.bind(this), false);
         xhr.upload.addEventListener("timeout", function(e){this.transferCanceled(e, xhr, messageItem);}.bind(this), false);
@@ -241,7 +280,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
             messageItem.status = "completed";
         }
         //@upload message
-        debugger;
+
         if (messageItem && messageItem.moduleMessage){
             if (messageItem.moduleMessage.transferComplete) messageItem.moduleMessage.transferComplete();
         }
@@ -279,7 +318,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
             }
         }
         //@upload message
-        debugger;
+
         if (messageItem && messageItem.moduleMessage){
             if (messageItem.moduleMessage.updateProgress) messageItem.moduleMessage.updateProgress(percent);
         }
@@ -329,13 +368,19 @@ MWF.xDesktop.Actions.RestActions = new Class({
                         }, xhr.responseText]);
                         break;
                     case "error":
+                        var messageId = (messageItem && messageItem.moduleMessage) ? messageItem.moduleMessage.data.id : "";
+                        if( messageId && xhr )xhr.messageId = messageId;
                         MWF.runCallback(callback, "failure", [xhr]);
                         break;
                 }
             }else{
+                var messageId = (messageItem && messageItem.moduleMessage) ? messageItem.moduleMessage.data.id : "";
+                if( messageId && xhr )xhr.messageId = messageId;
                 MWF.runCallback(callback, "failure", [xhr]);
             }
         }else{
+            var messageId = (messageItem && messageItem.moduleMessage) ? messageItem.moduleMessage.data.id : "";
+            if( messageId && xhr )xhr.messageId = messageId;
             MWF.runCallback(callback, "failure", [xhr]);
         }
     },
@@ -422,7 +467,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
         return xhr;
 	},
 	addFormDataMessage: function(file, noProgress, xhr, showMsg){
-        debugger;
+
         if (layout.desktop.message){
             var contentHTML = "";
             if (noProgress){
@@ -459,7 +504,7 @@ MWF.xDesktop.Actions.RestActions = new Class({
                 }
             };
         }
-debugger;
+
         //@upload message
         if (this.targetModule){
             var moduleMessage = this.targetModule.module.addFormDataMessage(this.targetModule.file);
@@ -553,16 +598,19 @@ MWF.xDesktop.Actions.RestActions.Callback = new Class({
 			switch(responseJSON.type) {
 			   case "success":
 				   if (this.appendSuccess) this.appendSuccess(responseJSON);
-				   if (this.success) this.success(responseJSON, responseText);
+				   if (this.success) return this.success(responseJSON, responseText);
+				   return responseJSON;
 			       break;
 			   case "warn":
 				   MWF.xDesktop.notice("info", {x: "right", y:"top"}, responseJSON.errorMessage.join("\n"));
 				   
 				   if (this.appendSuccess) this.appendSuccess(responseJSON);
-				   if (this.success) this.success(responseJSON);
-			       break;
+				   if (this.success) return this.success(responseJSON);
+                   return responseJSON;
+				   break;
 			   case "error":
-				   this.doError(null, responseText, responseJSON.message);
+				   return this.doError(null, responseText, responseJSON.message);
+                   return responseJSON;
 				   break;
 			}
 		}else{
@@ -580,7 +628,14 @@ MWF.xDesktop.Actions.RestActions.Callback = new Class({
 	},
 	doError: function(xhr, text, error){
 		if (this.appendFailure) this.appendFailure(xhr, text, error);
-		if (this.failure) this.failure(xhr, text, error);
+		if (this.failure && this.failure.owner){
+            if (this.failure.reject || (this.failure.rejectList && this.failure.rejectList.length)){
+                return this.failure(xhr, text, error);
+            }
+            this.failure = null;
+        }else{
+            if (this.failure) return this.failure(xhr, text, error);
+        }
 		if (!this.failure && !this.appendFailure){
             if (xhr.status!=0){
                 var errorText = error;
@@ -594,7 +649,7 @@ MWF.xDesktop.Actions.RestActions.Callback = new Class({
                 }
                 errorText = errorText.replace(/\</g, "&lt;");
                 errorText = errorText.replace(/\</g, "&gt;");
-                MWF.xDesktop.notice("error", {x: "right", y:"top"}, errorText);
+                if (layout.session && layout.session.user) MWF.xDesktop.notice("error", {x: "right", y:"top"}, errorText);
             }
 		//	throw "request error: "+errorText;
 		}

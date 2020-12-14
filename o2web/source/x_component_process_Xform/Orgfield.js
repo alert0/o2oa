@@ -77,6 +77,10 @@ MWF.xApplication.process.Xform.Orgfield = MWF.APPOrgfield =  new Class({
 	_loadNodeRead: function(){
 		this.node.empty();
 		this.node.setStyle("overflow" , "hidden");
+        this.node.set({
+            "nodeId": this.json.id,
+            "MWFType": this.json.type
+        });
         var node = new Element("div").inject(this.node);
 	},
     _searchConfirmPerson: function(item){
@@ -520,7 +524,7 @@ MWF.xApplication.process.Xform.Orgfield = MWF.APPOrgfield =  new Class({
 		this._setValue(this.getValue());
 	},
 	clickSelect: function( ev ){
-        debugger;
+
         this.validationMode();
 		var count = (this.json.count) ? this.json.count : 0;
 

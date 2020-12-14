@@ -250,7 +250,7 @@ MWF.xApplication.Common.Main = new Class({
 			this.window.titleText.set("text", this.options.title);
 		} catch (e) { }
 
-		this.window.content = content;
+		if (content && o2.typeOf(content)==="element") this.window.content = content;
 		if (!this.window.content) this.window.content = $("appContent") || $("layout");
 		if (!this.window.content) {
 			this.window.content = new Element("div", {"styles": {"width": 0, "height": 0}}).inject(document.body);
@@ -268,9 +268,12 @@ MWF.xApplication.Common.Main = new Class({
 		window.addEventListener("beforeunload", function (e) {
 			this.fireAppEvent("queryClose");
 		}.bind(this));
-		// window.addEventListener("pagehide", function (e) {
-		// 	this.fireAppEvent("queryClose");
-		// }.bind(this));
+
+		if(layout.mobile){
+			window.addEventListener("pagehide", function (e) {
+				this.fireAppEvent("queryClose");
+			}.bind(this));
+		}
 
 		// window.onbeforeunload = function(e){
 		//     this.fireAppEvent("queryClose");

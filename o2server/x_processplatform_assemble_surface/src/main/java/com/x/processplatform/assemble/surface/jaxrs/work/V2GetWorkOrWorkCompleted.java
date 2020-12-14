@@ -6,11 +6,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import com.google.gson.JsonElement;
 import com.x.base.core.container.EntityManagerContainer;
@@ -21,7 +22,6 @@ import com.x.base.core.entity.dataitem.ItemCategory;
 import com.x.base.core.project.bean.WrapCopier;
 import com.x.base.core.project.bean.WrapCopierFactory;
 import com.x.base.core.project.exception.ExceptionAccessDenied;
-import com.x.base.core.project.exception.ExceptionEntityNotExist;
 import com.x.base.core.project.gson.GsonPropertyObject;
 import com.x.base.core.project.http.ActionResult;
 import com.x.base.core.project.http.EffectivePerson;
@@ -35,6 +35,7 @@ import com.x.processplatform.assemble.surface.Business;
 import com.x.processplatform.core.entity.content.Attachment;
 import com.x.processplatform.core.entity.content.Data;
 import com.x.processplatform.core.entity.content.Read;
+import com.x.processplatform.core.entity.content.Record;
 import com.x.processplatform.core.entity.content.Task;
 import com.x.processplatform.core.entity.content.Work;
 import com.x.processplatform.core.entity.content.WorkCompleted;
@@ -50,48 +51,100 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 	private static Logger logger = LoggerFactory.getLogger(V2GetWorkOrWorkCompleted.class);
 
 	ActionResult<Wo> execute(EffectivePerson effectivePerson, String workOrWorkCompleted) throws Exception {
-		try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
-			ActionResult<Wo> result = new ActionResult<>();
-			Business business = new Business(emc);
-			if (!business.readableWithWorkOrWorkCompleted(effectivePerson, workOrWorkCompleted,
-					new ExceptionEntityNotExist(workOrWorkCompleted))) {
-				throw new ExceptionAccessDenied(effectivePerson);
-			}
-			Wo wo = null;
-			Work work = business.entityManagerContainer().find(workOrWorkCompleted, Work.class);
-			if (null != work) {
-				wo = this.work(effectivePerson, business, work);
-			} else {
-				WorkCompleted workCompleted = emc.flag(workOrWorkCompleted, WorkCompleted.class);
-				if (null != workCompleted) {
-					wo = this.workCompleted(business, effectivePerson, workCompleted);
-				}
-			}
-			result.setData(wo);
-			return result;
-		}
-	}
+		ActionResult<Wo> result = new ActionResult<>();
 
-	private Wo work(EffectivePerson effectivePerson, Business business, Work work)
-			throws InterruptedException, ExecutionException {
 		Wo wo = new Wo();
-		// Date s = new Date();
-		CompletableFuture.allOf(workJson(work, wo), activity(business, work, wo), data(business, work, wo),
-				task(effectivePerson, business, work, wo), read(effectivePerson, business, work.getJob(), wo),
-				creatorIdentity(business, work.getCreatorIdentity(), wo),
-				creatorPerson(business, work.getCreatorPerson(), wo), creatorUnit(business, work.getCreatorUnit(), wo),
-				attachment(effectivePerson, business, work.getJob(), wo)).get();
-		// System.out.println("!!!!!!!!!!!!!!!!work:" + ((new Date()).getTime() -
-		// s.getTime()));
-		return wo;
+		Work work = null;
+		WorkCompleted workCompleted = null;
+		try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+			work = emc.find(workOrWorkCompleted, Work.class);
+			if (null == work) {
+				workCompleted = emc.flag(workOrWorkCompleted, WorkCompleted.class);
+			}
+		}
+
+		CompletableFuture<Boolean> checkControlFuture = this.checkControlFuture(effectivePerson, workOrWorkCompleted);
+
+		if (null != work) {
+			CompletableFuture<Void> workJsonFuture = this.workJsonFuture(work, wo);
+			CompletableFuture<Void> activityRouteFuture = this.activityRouteFuture(work, wo);
+			CompletableFuture<Void> dataFuture = this.dataFuture(work, wo);
+			CompletableFuture<Void> taskFuture = this.taskFuture(effectivePerson, work.getJob(), work.getId(), wo);
+			CompletableFuture<Void> readFuture = this.readFuture(effectivePerson, work.getJob(), wo);
+			CompletableFuture<Void> creatorIdentityFuture = this.creatorIdentityFuture(work.getCreatorIdentity(), wo);
+			CompletableFuture<Void> creatorPersonFuture = this.creatorPersonFuture(work.getCreatorPerson(), wo);
+			CompletableFuture<Void> creatorUnitFuture = this.creatorUnitFuture(work.getCreatorUnit(), wo);
+			CompletableFuture<Void> attachmentFuture = this.attachmentFuture(effectivePerson, work.getJob(), wo);
+			CompletableFuture<Void> recordFuture = this.recordFuture(effectivePerson, work.getJob(), wo);
+			workJsonFuture.get(10, TimeUnit.SECONDS);
+			activityRouteFuture.get(10, TimeUnit.SECONDS);
+			dataFuture.get(10, TimeUnit.SECONDS);
+			taskFuture.get(10, TimeUnit.SECONDS);
+			readFuture.get(10, TimeUnit.SECONDS);
+			creatorIdentityFuture.get(10, TimeUnit.SECONDS);
+			creatorPersonFuture.get(10, TimeUnit.SECONDS);
+			creatorUnitFuture.get(10, TimeUnit.SECONDS);
+			attachmentFuture.get(10, TimeUnit.SECONDS);
+			recordFuture.get(10, TimeUnit.SECONDS);
+			for (WoTask woTask : wo.getTaskList()) {
+				wo.getRecordList().add(taskToRecord(woTask));
+			}
+		} else if (null != workCompleted) {
+			CompletableFuture<Void> workCompletedJsonFuture = this.workCompletedJsonFuture(workCompleted, wo);
+			CompletableFuture<Void> workCompletedDataFuture = this.workCompletedDataFuture(workCompleted, wo);
+			CompletableFuture<Void> readFuture = readFuture(effectivePerson, workCompleted.getJob(), wo);
+			CompletableFuture<Void> creatorIdentityFuture = creatorIdentityFuture(workCompleted.getCreatorIdentity(),
+					wo);
+			CompletableFuture<Void> creatorPersonFuture = creatorPersonFuture(workCompleted.getCreatorPerson(), wo);
+			CompletableFuture<Void> creatorUnitFuture = creatorUnitFuture(workCompleted.getCreatorUnit(), wo);
+			CompletableFuture<Void> attachmentFuture = attachmentFuture(effectivePerson, workCompleted.getJob(), wo);
+			CompletableFuture<Void> workCompletedRecordFuture = this.workCompletedRecordFuture(effectivePerson,
+					workCompleted, wo);
+			workCompletedJsonFuture.get(10, TimeUnit.SECONDS);
+			workCompletedDataFuture.get(10, TimeUnit.SECONDS);
+			readFuture.get(10, TimeUnit.SECONDS);
+			creatorIdentityFuture.get(10, TimeUnit.SECONDS);
+			creatorPersonFuture.get(10, TimeUnit.SECONDS);
+			creatorUnitFuture.get(10, TimeUnit.SECONDS);
+			attachmentFuture.get(10, TimeUnit.SECONDS);
+			workCompletedRecordFuture.get(10, TimeUnit.SECONDS);
+		}
+
+		if (BooleanUtils.isFalse(checkControlFuture.get(10, TimeUnit.SECONDS))) {
+			throw new ExceptionAccessDenied(effectivePerson, workOrWorkCompleted);
+		}
+
+		result.setData(wo);
+		return result;
 	}
 
-	private CompletableFuture<Void> data(Business business, Work work, Wo wo) {
+	private WoRecord taskToRecord(WoTask woTask) {
+		WoRecord o = new WoRecord();
+		// id必须设置为空,否则会影响每次输出的内容都不同,那么会导致etag每次不同.
+		o.setId("");
+		// order设置为task的最后修改时间,否则会影响每次输出的内容都不同,那么会导致etag每次不同.
+		o.setOrder(woTask.getUpdateTime().getTime());
+		// recordTime设置为task的最后修改时间,否则会影响每次输出的内容都不同,那么会导致etag每次不同.
+		o.setRecordTime(woTask.getUpdateTime());
+		o.setType(Record.TYPE_CURRENTTASK);
+		o.setFromActivity(woTask.getActivity());
+		o.setFromActivityAlias(woTask.getActivityAlias());
+		o.setFromActivityName(woTask.getActivityName());
+		o.setFromActivityToken(woTask.getActivityToken());
+		o.setFromActivityType(woTask.getActivityType());
+		o.setPerson(woTask.getPerson());
+		o.setIdentity(o.getIdentity());
+		o.setUnit(woTask.getUnit());
+		o.getProperties().setStartTime(woTask.getStartTime());
+		o.getProperties().setEmpowerFromIdentity(woTask.getEmpowerFromIdentity());
+		return o;
+	}
+
+	private CompletableFuture<Void> dataFuture(Work work, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
-				List<Item> list = business.entityManagerContainer().listEqualAndEqual(Item.class,
-						DataItem.bundle_FIELDNAME, work.getJob(), DataItem.itemCategory_FIELDNAME, ItemCategory.pp);
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				List<Item> list = emc.listEqualAndEqual(Item.class, DataItem.bundle_FIELDNAME, work.getJob(),
+						DataItem.itemCategory_FIELDNAME, ItemCategory.pp);
 				if (!list.isEmpty()) {
 					JsonElement jsonElement = itemConverter.assemble(list);
 					// 必须是Object对象
@@ -99,56 +152,28 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 						wo.setData(gson.fromJson(jsonElement, Data.class));
 					}
 				}
-				// System.out.println("!!!!!!!!!!!!!!!!data:" + ((new Date()).getTime() -
-				// s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> activity(Business business, Work work, Wo wo) {
+	private CompletableFuture<Void> taskFuture(EffectivePerson effectivePerson, String job, String workId, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
-				Activity activity = business.getActivity(work);
-				if (null != activity) {
-					WoActivity woActivity = new WoActivity();
-					activity.copyTo(woActivity);
-					wo.setActivity(woActivity);
-					if (Objects.equals(ActivityType.manual, activity.getActivityType())) {
-						wo.setRouteList(business.entityManagerContainer().fetchIn(Route.class, WoRoute.copier,
-								JpaObject.id_FIELDNAME, ((Manual) activity).getRouteList()));
-					}
-				}
-				// System.out.println("!!!!!!!!!!!!!!!!activity:" + ((new Date()).getTime() -
-				// s.getTime()));
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				wo.setTaskList(WoTask.copier.copy(emc.listEqual(Task.class, Task.job_FIELDNAME, job)));
+				wo.setCurrentTaskIndex(ListUtils.indexOf(wo.getTaskList(),
+						e -> effectivePerson.isPerson(e.getPerson()) && (StringUtils.equals(e.getWork(), workId))));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> task(EffectivePerson effectivePerson, Business business, Work work, Wo wo) {
+	private CompletableFuture<Void> attachmentFuture(EffectivePerson effectivePerson, String job, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
-				wo.setTaskList(WoTask.copier.copy(
-						business.entityManagerContainer().listEqual(Task.class, Task.work_FIELDNAME, work.getId())));
-				wo.setCurrentTaskIndex(
-						ListUtils.indexOf(wo.getTaskList(), e -> effectivePerson.isPerson(e.getPerson())));
-				// System.out.println("!!!!!!!!!!!!!!!!task:" + ((new Date()).getTime() -
-				// s.getTime()));
-			} catch (Exception e) {
-				logger.error(e);
-			}
-		});
-	}
-
-	private CompletableFuture<Void> attachment(EffectivePerson effectivePerson, Business business, String job, Wo wo) {
-		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				Business business = new Business(emc);
 				List<String> identities = business.organization().identity().listWithPerson(effectivePerson);
 				List<String> units = business.organization().unit().listWithPerson(effectivePerson);
 				List<WoAttachment> wos = new ArrayList<>();
@@ -172,95 +197,87 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 										Comparator.nullsLast(Date::compareTo))))
 						.collect(Collectors.toList());
 				wo.setAttachmentList(wos);
-				// System.out.println("!!!!!!!!!!!!!!!!attachment:" + ((new Date()).getTime() -
-				// s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> read(EffectivePerson effectivePerson, Business business, String job, Wo wo) {
+	private CompletableFuture<Void> readFuture(EffectivePerson effectivePerson, String job, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
-				wo.setReadList(WoRead.copier
-						.copy(business.entityManagerContainer().listEqual(Read.class, Read.job_FIELDNAME, job)));
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				wo.setReadList(WoRead.copier.copy(emc.listEqual(Read.class, Read.job_FIELDNAME, job)));
 				wo.setCurrentReadIndex(
 						ListUtils.indexOf(wo.getReadList(), e -> effectivePerson.isPerson(e.getPerson())));
-				// System.out.println("!!!!!!!!!!!!!!!!read:" + ((new Date()).getTime() -
-				// s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> workJson(Work work, Wo wo) {
+	private CompletableFuture<Void> workJsonFuture(Work work, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
 			try {
-				// Date s = new Date();
 				wo.setWork(gson.toJsonTree(WoWork.copier.copy(work)));
-				// System.out.println("!!!!!!!!!!!!!!!!workJson:" + ((new Date()).getTime() -
-				// s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> creatorIdentity(Business business, String creatorIdentity, Wo wo) {
+	private CompletableFuture<Void> activityRouteFuture(Work work, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
+			WoActivity woActivity = new WoActivity();
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				Business business = new Business(emc);
+				Activity activity = business.getActivity(work);
+				if (null != activity) {
+					activity.copyTo(woActivity);
+					wo.setActivity(woActivity);
+					if (Objects.equals(ActivityType.manual, activity.getActivityType())) {
+						wo.setRouteList(WoRoute.copier.copy(business.route().pick(((Manual) activity).getRouteList())));
+					}
+				}
+			} catch (Exception e) {
+				logger.error(e);
+			}
+		});
+	}
+
+	private CompletableFuture<Void> creatorIdentityFuture(String creatorIdentity, Wo wo) {
+		return CompletableFuture.runAsync(() -> {
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				Business business = new Business(emc);
 				wo.setCreatorIdentity(business.organization().identity().getObject(creatorIdentity));
-				// System.out.println("!!!!!!!!!!!!!!!!creatorIdentity:" + ((new
-				// Date()).getTime() - s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> creatorPerson(Business business, String creatorPerson, Wo wo) {
+	private CompletableFuture<Void> creatorPersonFuture(String creatorPerson, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				Business business = new Business(emc);
 				wo.setCreatorPerson(business.organization().person().getObject(creatorPerson));
-				// System.out.println("!!!!!!!!!!!!!!!!creatorPerson:" + ((new Date()).getTime()
-				// - s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private CompletableFuture<Void> creatorUnit(Business business, String creatorUnit, Wo wo) {
+	private CompletableFuture<Void> creatorUnitFuture(String creatorUnit, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
-			try {
-				// Date s = new Date();
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				Business business = new Business(emc);
 				wo.setCreatorUnit(business.organization().unit().getObject(creatorUnit));
-				// System.out.println("!!!!!!!!!!!!!!!!creatorUnit:" + ((new Date()).getTime() -
-				// s.getTime()));
 			} catch (Exception e) {
 				logger.error(e);
 			}
 		});
 	}
 
-	private Wo workCompleted(Business business, EffectivePerson effectivePerson, WorkCompleted workCompleted)
-			throws InterruptedException, ExecutionException {
-		Wo wo = new Wo();
-		CompletableFuture.allOf(completedJson(workCompleted, wo), completedData(business, workCompleted, wo),
-				read(effectivePerson, business, workCompleted.getJob(), wo),
-				creatorIdentity(business, workCompleted.getCreatorIdentity(), wo),
-				creatorPerson(business, workCompleted.getCreatorPerson(), wo),
-				creatorUnit(business, workCompleted.getCreatorUnit(), wo),
-				attachment(effectivePerson, business, workCompleted.getJob(), wo)).get();
-		return wo;
-	}
-
-	private CompletableFuture<Void> completedJson(WorkCompleted workCompleted, Wo wo) {
+	private CompletableFuture<Void> workCompletedJsonFuture(WorkCompleted workCompleted, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
 			try {
 				wo.setWork(gson.toJsonTree(WoWorkCompleted.copier.copy(workCompleted)));
@@ -270,15 +287,43 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		});
 	}
 
-	private CompletableFuture<Void> completedData(Business business, WorkCompleted workCompleted, Wo wo) {
+	private CompletableFuture<Void> recordFuture(EffectivePerson effectivePerson, String job, Wo wo) {
+		return CompletableFuture.runAsync(() -> {
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				wo.setRecordList(emc.fetchEqual(Record.class, WoRecord.copier, Record.job_FIELDNAME, job).stream()
+						.sorted(Comparator.comparing(WoRecord::getOrder)).collect(Collectors.toList()));
+			} catch (Exception e) {
+				logger.error(e);
+			}
+		});
+	}
+
+	private CompletableFuture<Void> workCompletedRecordFuture(EffectivePerson effectivePerson,
+			WorkCompleted workCompleted, Wo wo) {
+		return CompletableFuture.runAsync(() -> {
+			try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+				if (ListTools.isNotEmpty(workCompleted.getProperties().getRecordList())) {
+					wo.setRecordList(WoRecord.copier.copy(workCompleted.getProperties().getRecordList()).stream()
+							.sorted(Comparator.comparing(WoRecord::getOrder)).collect(Collectors.toList()));
+				} else {
+					wo.setRecordList(emc
+							.fetchEqual(Record.class, WoRecord.copier, Record.job_FIELDNAME, workCompleted.getJob())
+							.stream().sorted(Comparator.comparing(WoRecord::getOrder)).collect(Collectors.toList()));
+				}
+			} catch (Exception e) {
+				logger.error(e);
+			}
+		});
+	}
+
+	private CompletableFuture<Void> workCompletedDataFuture(WorkCompleted workCompleted, Wo wo) {
 		return CompletableFuture.runAsync(() -> {
 			if (BooleanUtils.isTrue(workCompleted.getMerged())) {
 				wo.setData(workCompleted.getProperties().getData());
 			} else {
-				try {
-					List<Item> list = business.entityManagerContainer().listEqualAndEqual(Item.class,
-							DataItem.bundle_FIELDNAME, workCompleted.getJob(), DataItem.itemCategory_FIELDNAME,
-							ItemCategory.pp);
+				try (EntityManagerContainer emc = EntityManagerContainerFactory.instance().create()) {
+					List<Item> list = emc.listEqualAndEqual(Item.class, DataItem.bundle_FIELDNAME,
+							workCompleted.getJob(), DataItem.itemCategory_FIELDNAME, ItemCategory.pp);
 					if (!list.isEmpty()) {
 						JsonElement jsonElement = itemConverter.assemble(list);
 						// 必须是Object对象
@@ -352,6 +397,7 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 
 	public static class Wo extends GsonPropertyObject {
 
+		private static final long serialVersionUID = -2651851022553574012L;
 		// work和workCompleted都有
 		private JsonElement work;
 		// work和workCompleted都有
@@ -372,6 +418,9 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 
 		// work和workCompleted都有
 		private List<WoAttachment> attachmentList;
+
+		// work和workCompleted都有,需要先行初始化,因为record可能为空
+		private List<WoRecord> recordList = new ArrayList<>();
 
 		// 只有work有
 		private WoActivity activity;
@@ -478,6 +527,14 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 			this.attachmentList = attachmentList;
 		}
 
+		public List<WoRecord> getRecordList() {
+			return recordList;
+		}
+
+		public void setRecordList(List<WoRecord> recordList) {
+			this.recordList = recordList;
+		}
+
 	}
 
 	public static class WoWork extends Work {
@@ -494,8 +551,7 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		private static final long serialVersionUID = -1772642962691214007L;
 
 		static WrapCopier<WorkCompleted, WoWorkCompleted> copier = WrapCopierFactory.wo(WorkCompleted.class,
-				WoWorkCompleted.class, null, ListTools.toList(JpaObject.FieldsInvisibleIncludeProperites,
-						WorkCompleted.formData_FIELDNAME, WorkCompleted.formMobileData_FIELDNAME));
+				WoWorkCompleted.class, null, JpaObject.FieldsInvisibleIncludeProperites);
 	}
 
 	public static class WoTask extends Task {
@@ -503,7 +559,7 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		private static final long serialVersionUID = 5244996549744746585L;
 
 		static WrapCopier<Task, WoTask> copier = WrapCopierFactory.wo(Task.class, WoTask.class, null,
-				JpaObject.FieldsInvisibleIncludeProperites);
+				JpaObject.FieldsInvisible);
 
 	}
 
@@ -512,7 +568,7 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		private static final long serialVersionUID = 5244996549744746585L;
 
 		static WrapCopier<Read, WoRead> copier = WrapCopierFactory.wo(Read.class, WoRead.class, null,
-				JpaObject.FieldsInvisibleIncludeProperites);
+				JpaObject.FieldsInvisible);
 
 	}
 
@@ -616,14 +672,20 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 
 	}
 
-	public static class WoRoute extends GsonPropertyObject {
-		static WrapCopier<Route, WoRoute> copier = WrapCopierFactory.wo(Route.class, WoRoute.class,
-				ListTools.toList(JpaObject.id_FIELDNAME, Route.name_FIELDNAME, Route.description_FIELDNAME,
-						Route.alias_FIELDNAME),
-				null);
+	public static class WoRoute extends Route {
+
+		private static final long serialVersionUID = 556378904185283486L;
+
+		static WrapCopier<Route, WoRoute> copier = WrapCopierFactory.wo(Route.class, WoRoute.class, null,
+				ListTools.toList(Route.createTime_FIELDNAME, Route.edition_FIELDNAME, Route.position_FIELDNAME,
+						Route.process_FIELDNAME, Route.updateTime_FIELDNAME, Route.track_FIELDNAME,
+						Route.properties_FIELDNAME));
 	}
 
 	public static class WoAttachment extends Attachment {
+
+		private static final long serialVersionUID = -5323646346508661416L;
+
 		static WrapCopier<Attachment, WoAttachment> copier = WrapCopierFactory.wo(Attachment.class, WoAttachment.class,
 				null, JpaObject.FieldsInvisibleIncludeProperites);
 
@@ -636,11 +698,11 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		public void setControl(WoAttachmentControl control) {
 			this.control = control;
 		}
-
 	}
 
 	public static class WoAttachmentControl extends GsonPropertyObject {
 
+		private static final long serialVersionUID = -1159880170066584166L;
 		private Boolean allowRead = false;
 		private Boolean allowEdit = false;
 		private Boolean allowControl = false;
@@ -668,6 +730,15 @@ class V2GetWorkOrWorkCompleted extends BaseAction {
 		public void setAllowControl(Boolean allowControl) {
 			this.allowControl = allowControl;
 		}
+
+	}
+
+	public static class WoRecord extends Record {
+
+		private static final long serialVersionUID = -7666329770246726197L;
+
+		static WrapCopier<Record, WoRecord> copier = WrapCopierFactory.wo(Record.class, WoRecord.class,
+				JpaObject.singularAttributeField(Record.class, true, false), JpaObject.FieldsInvisible);
 
 	}
 

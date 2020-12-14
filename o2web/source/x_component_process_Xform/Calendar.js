@@ -23,11 +23,27 @@ MWF.xApplication.process.Xform.Calendar = MWF.APPCalendar =  new Class({
             });
         }
     },
+    _getValueAg: function(value,isDate){
+        if (value && value.isAG){
+            return value.then(function(v){
+                this._getValueAg(v, isDate);
+            }.bind(this), function(){});
+        }else{
+            var d = (!!value) ? Date.parse(value) : "";
+            if (isDate){
+                return d || null;
+            }else{
+                return (d) ? d.format(this.json.format) : "";
+            }
+        }
+    },
     getValue: function(isDate){
+        if (this.moduleValueAG) return this.moduleValueAG;
         var value = this._getBusinessData();
         if( value && !isDate)return value;
-
         if (!value) value = this._computeValue();
+        if (value.then) return value;
+
         var d = (!!value) ? Date.parse(value) : "";
         if (isDate){
             return d || null;
@@ -35,14 +51,26 @@ MWF.xApplication.process.Xform.Calendar = MWF.APPCalendar =  new Class({
             //if (d) value = Date.parse(value).format(this.json.format);
             return (d) ? d.format(this.json.format) : "";
         }
+
+        return value || "";
     },
     getValueStr : function(){
         var value = this._getBusinessData();
         if (!value) value = this._computeValue();
         return value;
     },
+
+    __setValue: function(value){
+        var v = (value) ? ( Date.parse(value)).format(this.json.format) : "";
+        this._setBusinessData(value);
+        if (this.node.getFirst()) this.node.getFirst().set("value", v || "");
+        if (this.readonly || this.json.isReadonly) this.node.set("text", v);
+        this.moduleValueAG = null;
+        return value;
+    },
+
 	clickSelect: function(){
-	    debugger;
+
         var _self = this;
         if (!this.calendar){
             MWF.require("MWF.widget.Calendar", function(){
@@ -52,7 +80,7 @@ MWF.xApplication.process.Xform.Calendar = MWF.APPCalendar =  new Class({
                     "isTime": (this.json.selectType==="datetime" || this.json.selectType==="time"),
                     "timeOnly": (this.json.selectType === "time"),
                     //"target": this.form.node,
-                    "target": this.form.app.content,
+                    "target": layout.mobile ? $(document.body) : this.form.app.content,
                     "format": this.json.format,
                     "onComplate": function(formateDate, date){
                         this.validationMode();

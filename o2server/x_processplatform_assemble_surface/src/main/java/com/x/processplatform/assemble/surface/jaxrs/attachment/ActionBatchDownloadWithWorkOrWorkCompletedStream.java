@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.x.base.core.project.config.StorageMapping;
-import com.x.general.core.entity.file.GeneralFile;
 import com.x.processplatform.assemble.surface.ThisApplication;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +22,7 @@ import com.x.base.core.project.jaxrs.WoFile;
 import com.x.base.core.project.logger.Logger;
 import com.x.base.core.project.logger.LoggerFactory;
 import com.x.base.core.project.tools.DateTools;
+import com.x.general.core.entity.GeneralFile;
 import com.x.processplatform.assemble.surface.Business;
 import com.x.processplatform.core.entity.content.Attachment;
 import com.x.processplatform.core.entity.content.Work;
@@ -78,6 +78,9 @@ class ActionBatchDownloadWithWorkOrWorkCompletedStream extends BaseAction {
 				}
 			}
 			if (StringUtils.isBlank(fileName)) {
+				if(title.length()>60){
+					title = title.substring(0, 60);
+				}
 				fileName = title + DateTools.format(new Date(), DateTools.formatCompact_yyyyMMddHHmmss) + ".zip";
 			} else {
 				String extension = FilenameUtils.getExtension(fileName);

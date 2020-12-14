@@ -388,7 +388,7 @@ MWF.xApplication.process.Xform.Personfield = MWF.APPPersonfield =  new Class({
     },
 
 	clickSelect: function( ev ){
-        debugger;
+
         var options = this.getOptions();
         if( this.selector && this.selector.loading ) {
         }else if( this.selector && this.selector.selector && this.selector.selector.active ){
@@ -417,6 +417,10 @@ MWF.xApplication.process.Xform.Personfield = MWF.APPPersonfield =  new Class({
     },
     _loadNodeRead: function(){
         this.node.empty();
+        this.node.set({
+            "nodeId": this.json.id,
+            "MWFType": this.json.type
+        });
         var node = new Element("div").inject(this.node);
     },
     _searchConfirmPerson: function(item){
@@ -648,7 +652,7 @@ MWF.xApplication.process.Xform.Personfield = MWF.APPPersonfield =  new Class({
         var values = [];
         var comboxValues = [];
 
-        debugger;
+
         var simple = this.json.storeRange === "simple";
 
         var type = typeOf(value);

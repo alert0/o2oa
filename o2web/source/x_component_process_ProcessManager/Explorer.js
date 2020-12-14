@@ -167,26 +167,36 @@ MWF.xApplication.process.ProcessManager.Explorer = new Class({
             "styles": this.css.elementContentListNode
         }).inject(this.elementContentNode);
 
-        this.setContentSize();
-        this.app.addEvent("resize", this.setContentSize.bind(this));
+        this.setContentSizeFun = this.setContentSize.bind(this);
+        this.app.addEvent("resize", this.setContentSizeFun);
+        this.app.addEvent("close", function(){
+            if (this.setContentSizeFun){
+                this.app.removeEvent("resize", this.setContentSizeFun);
+                this.setContentSizeFun = null;
+            }
+        }.bind(this));
     },
     setContentSize: function(){
-        var toolbarSize = this.toolbarNode.getSize();
-        var nodeSize = this.node.getSize();
-        var pt = this.elementContentNode.getStyle("padding-top").toFloat();
-        var pb = this.elementContentNode.getStyle("padding-bottom").toFloat();
+        if (this.elementContentListNode){
+            var toolbarSize = (this.toolbarNode) ? this.toolbarNode.getSize() : {"x": 0, "y": 0};
+            var nodeSize = (this.node) ? this.node.getSize() : {"x": 0, "y": 0};
+            var categorySize = this.categoryElementNode ? this.categoryElementNode.getSize() : {"x": 0, "y": 0};
 
-        var height = nodeSize.y-toolbarSize.y-pt-pb;
-        this.elementContentNode.setStyle("height", ""+height+"px");
+            var pt = this.elementContentNode.getStyle("padding-top").toFloat();
+            var pb = this.elementContentNode.getStyle("padding-bottom").toFloat();
 
-        var count = (nodeSize.x/282).toInt();
-        var x = count*282;
-        var m = (nodeSize.x-x)/2-10;
+            var height = nodeSize.y-toolbarSize.y-categorySize.y-pt-pb;
+            this.elementContentNode.setStyle("height", ""+height+"px");
 
-        this.elementContentListNode.setStyles({
-            "width": ""+x+"px",
-            "margin-left": "" + m + "px"
-        });
+            var count = (nodeSize.x/282).toInt();
+            var x = count*282;
+            var m = (nodeSize.x-x)/2-10;
+
+            this.elementContentListNode.setStyles({
+                "width": ""+x+"px",
+                "margin-left": "" + m + "px"
+            });
+        }
     },
     setNodeScroll: function(){
         MWF.require("MWF.widget.DragScroll", function(){
@@ -218,6 +228,10 @@ MWF.xApplication.process.ProcessManager.Explorer = new Class({
                 }.bind(this));
             }
             this.loadCategoryList();
+            if( !this.isSetContentSize ){
+                this.setContentSize();
+                this.isSetContentSize = true;
+            }
         }.bind(this));
     },
     loadCategoryList: function(){

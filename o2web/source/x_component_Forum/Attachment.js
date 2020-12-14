@@ -81,27 +81,42 @@ MWF.xApplication.Forum.Attachment = new Class({
     },
 
     createUploadFileNode: function () {
-        this.attachmentController.doUploadAttachment({"site": this.options.documentId}, this.actions.action, "uploadAttachment", {"id": this.options.documentId, "documentid":this.options.documentId}, null, function(o){
-            j = o;
-            if ( j.data ) {
-                //j.userMessage
-                var aid = typeOf( j.data ) == "object" ? j.data.id : j.data[0].id;
-                this.actions.getAttachment(aid, this.options.documentId, function (json) {
-                    json = this.transportData(json);
-                    if (json.data) {
-                        this.attachmentController.addAttachment(json.data);
-                        //this.attachmentList.push(json.data);
-                    }
-                    this.attachmentController.checkActions();
+        this.attachmentController.doUploadAttachment(
+            {"site": this.options.documentId},
+            this.actions.action,
+            "uploadAttachment",
+            {"id": this.options.documentId, "documentid":this.options.documentId},
+            null,
+            function(o){
+                var j = o;
+                if ( j.data ) {
+                    //j.userMessage
+                    var aid = typeOf( j.data ) == "object" ? j.data.id : j.data[0].id;
+                    this.actions.getAttachment(aid, this.options.documentId, function (json) {
+                        json = this.transportData(json);
+                        if (json.data) {
+                            this.attachmentController.addAttachment(json.data, o.messageId);
+                            //this.attachmentList.push(json.data);
+                        }
+                        this.attachmentController.checkActions();
 
-                    this.fireEvent("upload", [json.data]);
-                }.bind(this))
+                        this.fireEvent("upload", [json.data]);
+                        this.fireEvent("change");
+                    }.bind(this))
+                }
+                this.attachmentController.checkActions();
+            }.bind(this),
+            function(files){
+                this.isQueryUploadSuccess = true;
+                this.fireEvent( "queryUploadAttachment" );
+                return this.isQueryUploadSuccess;
+            }.bind(this),
+            null, null, null,
+            function (o) { //错误的回调
+            if (o.messageId && this.attachmentController.messageItemList) {
+                var message = this.attachmentController.messageItemList[o.messageId];
+                if( message && message.node )message.node.destroy();
             }
-            this.attachmentController.checkActions();
-        }.bind(this), function(files){
-            this.isQueryUploadSuccess = true;
-            this.fireEvent( "queryUploadAttachment" );
-            return this.isQueryUploadSuccess;
         }.bind(this));
         // this.uploadFileAreaNode = new Element("div");
         // var html = "<input name=\"file\" type=\"file\" multiple/>";
@@ -211,6 +226,12 @@ MWF.xApplication.Forum.Attachment = new Class({
                         this.form.documentAction.getAttachment(attachment.data.id, this.opetions.documentId, function (json) {
                             attachment.data = json.data;
                             attachment.reload();
+
+                            if (o.messageId && this.attachmentController.messageItemList) {
+                                var message = this.attachmentController.messageItemList[o.messageId];
+                                if( message && message.node )message.node.destroy();
+                            }
+
                             this.attachmentController.checkActions();
                         }.bind(this))
                     }.bind(this), null, formData, file);

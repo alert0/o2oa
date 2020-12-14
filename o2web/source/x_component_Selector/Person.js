@@ -32,6 +32,7 @@ MWF.xApplication.Selector.Person = new Class({
         "contentUrl" : "", //和默认的页面布局不一样的话，可以传入页面布局HTML URL
         "injectToBody" : false, //当传入HTML URL的时候是否插入到document.body, false的时候插入到this.container
         "selectSingleItem" : false, //当只有一个候选项的时候，是否默认选中
+        "hiddenEmptyCategory" : false,
 
         "flatCategory" : false, //扁平化展现分类,
         "selectType" : "person",
@@ -83,6 +84,11 @@ MWF.xApplication.Selector.Person = new Class({
 
         this.subCategorys = []; //直接的分类
         this.subItems = []; //直接的选择项
+
+        if( !this.options.values ){
+            this.options.values = [];
+        }
+
         this._init();
     },
     _init : function(){
@@ -1978,6 +1984,7 @@ MWF.xApplication.Selector.Person.Item = new Class({
     selectedSingle: function( checkValid ){
         if (!this.isSelected){
             if (this.selector.currentItem) this.selector.currentItem.unSelectedSingle();
+            this.selector.emptySelectedItems();
             this.getData(function(){
                 this.selector.currentItem = this;
                 this.isSelected = true;
@@ -2249,6 +2256,7 @@ MWF.xApplication.Selector.Person.ItemSelected = new Class({
                 }.bind(this));
             }
         }
+        if( this.afterCheck )this.afterCheck();
     },
     destroy: function(){
         if(this.node){
@@ -2480,8 +2488,12 @@ MWF.xApplication.Selector.Person.ItemCategory = new Class({
             }
 
             if ( !this._hasChild()){
-                this.actionNode.setStyle("background", "transparent");
-                this.textNode.setStyle("color", "#777");
+                if( this.selector.options.hiddenEmptyCategory ){
+                    this.node.hide()
+                }else{
+                    this.actionNode.setStyle("background", "transparent");
+                    this.textNode.setStyle("color", "#777");
+                }
             }
 
             if( this.selectAllNode ){

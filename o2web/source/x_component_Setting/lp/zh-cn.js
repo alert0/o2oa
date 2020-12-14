@@ -151,6 +151,9 @@ MWF.xApplication.Setting.LP = {
     "mobile_module": "{name}模块",
     "mobile_module_infor": "移动端是否开启{name}模块",
 
+    "mobile_module_simple_mode": "移动端简易模式",
+    "mobile_module_simple_mode_infor": "移动端开启简易模式后只显示首页和设置页面",
+
     "mobile_styleSetting": "移动端图标样式配置",
     "mobile_style": "{name}图片 ",
     "mobile_style_infor": "点击更换{name}图片",
@@ -206,7 +209,7 @@ MWF.xApplication.Setting.LP = {
 
     "resource_upload":"资源选择",
     "resource_replace":"是否覆盖",
-    "resource_replaceDesc":"覆盖类型：‘是’删除原文件然后上传，‘否’覆盖原文件",
+    "resource_replaceDesc":"覆盖类型：‘否’删除原文件然后上传，‘是’覆盖原文件",
     "resource_replace_yes":"是",
     "resource_replace_no":"否",
     "resource_filePath":"存放目录",

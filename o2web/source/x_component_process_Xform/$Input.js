@@ -1,10 +1,14 @@
 MWF.xDesktop.requireApp("process.Xform", "$Module", null, false);
-/** Class Input组件 */
-MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
+/** @class $Input 组件类，此类为所有输入组件的父类
+* @extends MWF.xApplication.process.Xform.$Module
+ * @abstract
+ */
+MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class(
+    /** @lends MWF.xApplication.process.Xform.$Input# */
+    {
 	Implements: [Events],
 	Extends: MWF.APP$Module,
 	iconStyle: "personfieldIcon",
-
     initialize: function(node, json, form, options){
         this.node = $(node);
         this.node.store("module", this);
@@ -68,6 +72,10 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
     },
     _loadNodeRead: function(){
         this.node.empty();
+        this.node.set({
+            "nodeId": this.json.id,
+            "MWFType": this.json.type
+        });
     },
     loadDescription: function(){
         if (this.readonly || this.json.isReadonly)return;
@@ -79,6 +87,11 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
                 if( this.json.showIcon!='no' && !this.form.json.hideModuleIcon ){
                     if (COMMON.Browser.safari) w = w-20;
                 }
+
+                /**
+                 * 描述信息节点，select\radio\checkbox无此节点，只读情况下无此节点.
+                 * @member {Element}
+                 */
                 this.descriptionNode = new Element("div", {"styles": this.form.css.descriptionNode, "text": this.json.description}).inject(this.node);
                 this.descriptionNode.setStyles({
                     "width": ""+w+"px",
@@ -184,15 +197,49 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
         return (this.json.defaultValue && this.json.defaultValue.code) ? this.form.Macro.exec(this.json.defaultValue.code, this): (value || "");
     },
 	getValue: function(){
+        if (this.moduleValueAG) return this.moduleValueAG;
         var value = this._getBusinessData();
         if (!value) value = this._computeValue();
 		return value || "";
 	},
     _setValue: function(value){
+	    // if (value && value.isAG){
+	    //     var ag = o2.AG.all(value).then(function(v){
+	    //         if (o2.typeOf(v)=="array") v = v[0];
+        //         this.__setValue(v);
+        //     }.bind(this));
+        //     this.moduleValueAG = ag;
+	    //     ag.then(function(){
+        //         this.moduleValueAG = null;
+        //     }.bind(this));
+        // }else {
+        if (!!value && o2.typeOf(value.then)=="function"){
+            var p = o2.promiseAll(value).then(function(v){
+                this.__setValue(v);
+            }.bind(this), function(){});
+            this.moduleValueAG = p;
+            p.then(function(){
+                this.moduleValueAG = null;
+            }.bind(this), function(){
+                this.moduleValueAG = null;
+            }.bind(this));
+        }else{
+            this.moduleValueAG = null;
+            this.__setValue(value);
+        }
+
+            //this.__setValue(value);
+        // }
+
+    },
+    __setValue: function(value){
         this._setBusinessData(value);
         if (this.node.getFirst()) this.node.getFirst().set("value", value || "");
         if (this.readonly || this.json.isReadonly) this.node.set("text", value);
+        this.moduleValueAG = null;
+        return value;
     },
+
 	_loadValue: function(){
         this._setValue(this.getValue());
 	},
@@ -225,7 +272,7 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
 	},
     /**
      * 判断组件值是否为空.
-     * @return {boolean}.
+     * @return {Boolean}.
      */
     isEmpty : function(){
 	    var data = this.getData();
@@ -233,11 +280,11 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
     },
     /**
      * 获取组件值.
-     * @return {object/string}.
+     * @return {Array|Object|String|Number|Boolean}.
      */
 	getData: function(when){
         if (this.json.compute == "save") this._setValue(this._computeValue());
-		return this.getInputData();
+        return this.getInputData();
 	},
     getInputData: function(){
         if (this.node.getFirst()){
@@ -247,25 +294,63 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
         }
     },
     /**
-     * 重置组件的值，如果设置了默认值，则设置为默认值，否则置空。
+     * 重置组件的值为默认值或置空。
      */
     resetData: function(){
         this.setData(this.getValue());
     },
     /**
      * 为控件赋值。
-     *  @param {string/number/jsonObject} .
+     *  @param data{String|Number|JsonObject|Array} .
      */
 	setData: function(data){
+        // if (data && data.isAG){
+        //     var ag = o2.AG.all(data).then(function(v){
+        //         if (o2.typeOf(v)=="array") v = v[0];
+        //         this.__setData(v);
+        //     }.bind(this));
+        //     this.moduleValueAG = ag;
+        //     ag.then(function(){
+        //         this.moduleValueAG = null;
+        //     }.bind(this));
+        // }else{
+        if (!!data && o2.typeOf(data.then)=="function"){
+            var p = o2.promiseAll(data).then(function(v){
+                this.__setData(v);
+                // if (this.node.getFirst() && !this.readonly && !this.json.isReadonly) {
+                //     this.checkDescription();
+                //     this.validationMode();
+                // }
+            }.bind(this), function(){});
+            this.moduleValueAG = p;
+            p.then(function(){
+                this.moduleValueAG = null;
+            }.bind(this), function(){
+                this.moduleValueAG = null;
+            }.bind(this));
+        }else{
+            this.moduleValueAG = null;
+            this.__setData(data);
+            // if (this.node.getFirst() && !this.readonly && !this.json.isReadonly) {
+            //     this.checkDescription();
+            //     this.validationMode();
+            // }
+        }
+            //this.__setData(data);
+        //}
+	},
+    __setData: function(data){
         this._setBusinessData(data);
-		if (this.node.getFirst()){
+        if (this.node.getFirst()){
             this.node.getFirst().set("value", data);
             this.checkDescription();
             this.validationMode();
         }else{
             this.node.set("text", data);
         }
-	},
+        this.moduleValueAG = null;
+    },
+
 
     createErrorNode: function(text){
 
@@ -331,7 +416,6 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
     },
     notValidationMode: function(text){
         if (!this.isNotValidationMode){
-            debugger;
             this.isNotValidationMode = true;
             this.node.store("borderStyle", this.node.getStyles("border-left", "border-right", "border-top", "border-bottom"));
             this.node.setStyle("border-color", "red");
@@ -451,8 +535,8 @@ MWF.xApplication.process.Xform.$Input = MWF.APP$Input =  new Class({
     },
     /**
      * 根据组件的校验设置进行校验。
-     *  @param {string} routeName-路由名称.
-     *  @return {boolean} 是否通过校验
+     *  @param {String} routeName - 可选，路由名称.
+     *  @return {Boolean} 是否通过校验
      */
     validation: function(routeName, opinion){
         if (!this.readonly && !this.json.isReadonly){

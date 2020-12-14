@@ -32,7 +32,6 @@ import com.x.base.core.project.config.CenterServer;
 import com.x.base.core.project.config.Config;
 import com.x.base.core.project.config.DataServer;
 import com.x.base.core.project.config.ExternalDataSource;
-import com.x.base.core.project.gson.XGsonBuilder;
 import com.x.base.core.project.logger.Logger;
 import com.x.base.core.project.logger.LoggerFactory;
 import com.x.base.core.project.tools.ClassLoaderTools;
@@ -150,8 +149,9 @@ public class ResourceFactory {
 			dataSource.setMaxPoolSize(ds.getMaxTotal());
 			dataSource.setMinPoolSize(ds.getMaxIdle());
 			// 增加校验
-			dataSource.setTestConnectionOnCheckin(true);
-			dataSource.setTestConnectionOnCheckout(true);
+			dataSource.setTestConnectionOnCheckin(ds.getTestConnectionOnCheckin());
+			dataSource.setTestConnectionOnCheckout(ds.getTestConnectionOnCheckout());
+			dataSource.setMaxIdleTime(ds.getMaxIdleTime());
 			dataSource.setAcquireIncrement(2);
 			if (BooleanUtils.isTrue(ds.getStatEnable())) {
 				dataSource.setFilters(ds.getStatFilter());

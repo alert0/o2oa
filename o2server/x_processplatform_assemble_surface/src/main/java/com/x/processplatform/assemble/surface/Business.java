@@ -1097,16 +1097,16 @@ public class Business {
 		if (effectivePerson.isPerson(creatorPerson)) {
 			return true;
 		}
-		if (emc.countEqualAndEqual(TaskCompleted.class, TaskCompleted.person_FIELDNAME,
-				effectivePerson.getDistinguishedName(), TaskCompleted.job_FIELDNAME, job) == 0) {
-			if (emc.countEqualAndEqual(ReadCompleted.class, ReadCompleted.person_FIELDNAME,
-					effectivePerson.getDistinguishedName(), ReadCompleted.job_FIELDNAME, job) == 0) {
-				if (emc.countEqualAndEqual(Task.class, Task.person_FIELDNAME, effectivePerson.getDistinguishedName(),
-						Task.job_FIELDNAME, job) == 0) {
-					if (emc.countEqualAndEqual(Read.class, Read.person_FIELDNAME,
-							effectivePerson.getDistinguishedName(), Read.job_FIELDNAME, job) == 0) {
-						if (emc.countEqualAndEqual(Review.class, Review.person_FIELDNAME,
-								effectivePerson.getDistinguishedName(), Review.job_FIELDNAME, job) == 0) {
+		if (emc.countEqualAndEqual(Review.class, Review.person_FIELDNAME, effectivePerson.getDistinguishedName(),
+				Review.job_FIELDNAME, job) == 0) {
+			if (emc.countEqualAndEqual(Task.class, Task.person_FIELDNAME, effectivePerson.getDistinguishedName(),
+					Task.job_FIELDNAME, job) == 0) {
+				if (emc.countEqualAndEqual(Read.class, Read.person_FIELDNAME, effectivePerson.getDistinguishedName(),
+						Read.job_FIELDNAME, job) == 0) {
+					if (emc.countEqualAndEqual(TaskCompleted.class, TaskCompleted.person_FIELDNAME,
+							effectivePerson.getDistinguishedName(), TaskCompleted.job_FIELDNAME, job) == 0) {
+						if (emc.countEqualAndEqual(ReadCompleted.class, ReadCompleted.person_FIELDNAME,
+								effectivePerson.getDistinguishedName(), ReadCompleted.job_FIELDNAME, job) == 0) {
 							Application application = application().pick(applicationId);
 							Process process = process().pick(processId);
 							if (!canManageApplicationOrProcess(effectivePerson, application, process)) {
@@ -1212,7 +1212,7 @@ public class Business {
 
 	/**
 	 * 下载附件并打包为zip
-	 * 
+	 *
 	 * @param attachmentList
 	 * @param os
 	 * @throws Exception
@@ -1224,13 +1224,18 @@ public class Business {
 		/* 生成zip压缩文件内的目录结构 */
 		if (attachmentList != null) {
 			for (Attachment att : attachmentList) {
-				filePathMap.put(att.getName(), att);
+				if(filePathMap.containsKey(att.getName())) {
+					filePathMap.put(att.getSite()+"-"+att.getName(), att);
+				}else{
+					filePathMap.put(att.getName(), att);
+				}
 			}
 		}
 		try (ZipOutputStream zos = new ZipOutputStream(os)) {
 			for (Map.Entry<String, Attachment> entry : filePathMap.entrySet()) {
 				zos.putNextEntry(new ZipEntry(StringUtils.replaceEach(entry.getKey(),
-						new String[] { "/",":","*","?","<<",">>","|","<",">","\\" }, new String[] { "","","","","","","","","","" })));
+						new String[] { "/", ":", "*", "?", "<<", ">>", "|", "<", ">", "\\" },
+						new String[] { "", "", "", "", "", "", "", "", "", "" })));
 				StorageMapping mapping = ThisApplication.context().storageMappings().get(Attachment.class,
 						entry.getValue().getStorage());
 				try (ByteArrayOutputStream os1 = new ByteArrayOutputStream()) {
@@ -1244,7 +1249,8 @@ public class Business {
 			if (otherAttMap != null) {
 				for (Map.Entry<String, byte[]> entry : otherAttMap.entrySet()) {
 					zos.putNextEntry(new ZipEntry(StringUtils.replaceEach(entry.getKey(),
-							new String[] { "/",":","*","?","<<",">>","|","<",">","\\" }, new String[] { "","","","","","","","","","" })));
+							new String[] { "/", ":", "*", "?", "<<", ">>", "|", "<", ">", "\\" },
+							new String[] { "", "", "", "", "", "", "", "", "", "" })));
 					zos.write(entry.getValue());
 				}
 			}
